@@ -6,3 +6,4 @@ torch
 pdfplumber
 PyPDF2
 accelerate
+streamlit
