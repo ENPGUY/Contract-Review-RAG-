@@ -42,6 +42,11 @@ class ContractAnalysisRAG:
             logger.info("Using TF-IDF for retrieval")
             self.vectorizer = TfidfVectorizer()
 
+            self.llm = ContractLLM(
+            api_key=api_key,
+            model=model,
+        )
+
         try:
             self.pipe = pipeline(
                 "text-generation", 
