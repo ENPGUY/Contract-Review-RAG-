@@ -9,6 +9,7 @@ from transformers import pipeline
 import torch
 from .chunking_system import ChunkingSystem
 from .chunk import Chunk
+from .llm import ContractLLM
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
