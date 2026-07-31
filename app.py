@@ -1,8 +1,24 @@
 import streamlit as st
 import pdfplumber
-
+from src.rag import ContractAnalysisRAG
 from src.llm import ContractLLM
 
+
+# --------------------------------------------------
+# rag 설정
+# --------------------------------------------------
+
+try:
+    rag = ContractAnalysisRAG(
+        api_key=st.secrets["OPENAI_API_KEY"],
+        model=st.secrets.get("OPENAI_MODEL", "gpt-4.1-mini"),
+        top_k=5,
+    )
+
+except KeyError:
+    st.error("OPENAI_API_KEY가 설정되지 않았습니다.")
+    st.stop()
+    
 
 st.set_page_config(
     page_title="AI 계약서 검토",
@@ -66,10 +82,40 @@ review_position = st.selectbox(
 # 나중에는 PDF 추출 결과 또는 RAG 검색 결과를 넣습니다.
 # --------------------------------------------------
 
+chunks = [
+    {
+        "text": contract_text,
+        "page": 1,
+    }
+]
+
+rag.add_chunks(chunks)
+
 uploaded_file = st.file_uploader(
     "계약서 PDF 업로드",
     type=["pdf"],
 )
+
+question = st.text_input(
+    "계약서 질문",
+    placeholder="예: 계약 해지 조건은 무엇인가요?",
+)
+
+if st.button("질문하기", type="primary"):
+    if not question.strip():
+        st.warning("질문을 입력하세요.")
+
+    elif not rag.chunks:
+        st.warning("계약서를 먼저 업로드하세요.")
+
+    else:
+        with st.spinner("계약서 근거를 검색하고 답변을 생성하고 있습니다..."):
+            answer = rag.answer_with_rag(
+                question=question,
+                review_position=review_position,
+            )
+
+        st.markdown(answer)
 
 contract_text = ""
 
