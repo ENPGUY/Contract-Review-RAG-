@@ -1,4 +1,5 @@
 import streamlit as st
+import pdfplumber
 
 from src.llm import ContractLLM
 
@@ -65,12 +66,48 @@ review_position = st.selectbox(
 # 나중에는 PDF 추출 결과 또는 RAG 검색 결과를 넣습니다.
 # --------------------------------------------------
 
-contract_text = st.text_area(
-    "계약서 내용",
-    height=350,
-    placeholder="계약서 내용을 입력하거나 PDF에서 추출한 내용을 연결하세요.",
+uploaded_file = st.file_uploader(
+    "계약서 PDF 업로드",
+    type=["pdf"],
 )
 
+contract_text = ""
+
+if uploaded_file is not None:
+    try:
+        pages = []
+
+        with pdfplumber.open(uploaded_file) as pdf:
+            for page_number, page in enumerate(pdf.pages, start=1):
+                page_text = page.extract_text() or ""
+
+                if page_text.strip():
+                    pages.append(
+                        f"[페이지 {page_number}]\n{page_text}"
+                    )
+
+        contract_text = "\n\n".join(pages)
+
+        if contract_text:
+            st.success(
+                f"계약서 {len(pages)}개 페이지의 텍스트를 추출했습니다."
+            )
+
+            with st.expander("추출된 계약서 내용 확인"):
+                st.text_area(
+                    "추출 결과",
+                    value=contract_text,
+                    height=350,
+                    disabled=True,
+                )
+        else:
+            st.warning(
+                "PDF에서 텍스트를 추출하지 못했습니다. "
+                "스캔 PDF라면 OCR 기능이 필요합니다."
+            )
+
+    except Exception as error:
+        st.error(f"PDF 처리 중 오류가 발생했습니다: {error}")
 
 # --------------------------------------------------
 # 계약서 요약
