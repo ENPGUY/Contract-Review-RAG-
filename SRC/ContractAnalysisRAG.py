@@ -1,6 +1,6 @@
 from typing import Any
 
-from SRC.llm import ContractLLM
+from .ContractLLM import ContractLLM
 
 
 class ContractAnalysisRAG:
