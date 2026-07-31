@@ -7,3 +7,8 @@ pdfplumber
 PyPDF2
 accelerate
 streamlit
+openai>=1.0.0
+pdfplumber
+scikit-learn
+sentence-transformers
+numpy
