@@ -1,7 +1,7 @@
 import streamlit as st
 import pdfplumber
-from src.rag import ContractAnalysisRAG
-from src.llm import ContractLLM
+from SRC import RAG
+from SRC import llm
 
 
 # --------------------------------------------------
