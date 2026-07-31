@@ -3,3 +3,6 @@
 build/
 dist/
 *.egg-info/
+.streamlit/secrets.toml
+.env
+__pycache__/
