@@ -1,6 +1,9 @@
+import logging
 from typing import Any
 
 from .ContractLLM import ContractLLM
+from .chunk import Chunk
+from .chunking_system import ChunkingSystem
 
 
 class ContractAnalysisRAG:
