@@ -1,23 +1,14 @@
 import streamlit as st
 import pdfplumber
+
 from SRC.ContractAnalysisRAG import ContractAnalysisRAG
+from SRC.ContractLLM import ContractLLM
 
 
 # --------------------------------------------------
-# rag 설정
+# Streamlit 화면 설정
+# 반드시 첫 번째 Streamlit 명령이어야 합니다.
 # --------------------------------------------------
-
-try:
-    rag = ContractAnalysisRAG(
-        api_key=st.secrets["OPENAI_API_KEY"],
-        model=st.secrets.get("OPENAI_MODEL", "gpt-4.1-mini"),
-        top_k=5,
-    )
-
-except KeyError:
-    st.error("OPENAI_API_KEY가 설정되지 않았습니다.")
-    st.stop()
-    
 
 st.set_page_config(
     page_title="AI 계약서 검토",
@@ -26,27 +17,45 @@ st.set_page_config(
 )
 
 st.title("📄 AI 계약서 검토 시스템")
-st.caption("계약서 내용을 기반으로 요약, 위험조항 분석 및 질의응답을 제공합니다.")
+st.caption(
+    "계약서 내용을 기반으로 요약, 위험조항 분석 및 "
+    "질의응답을 제공합니다."
+)
 
 
 # --------------------------------------------------
-# OpenAI API 설정
+# OpenAI API 및 RAG 설정
 # --------------------------------------------------
 
 try:
     api_key = st.secrets["OPENAI_API_KEY"]
-    model = st.secrets.get("OPENAI_MODEL", "gpt-4.1-mini")
-
-    llm = ContractLLM(
-        api_key=api_key,
-        model=model,
+    model = st.secrets.get(
+        "OPENAI_MODEL",
+        "gpt-4.1-mini",
     )
 
 except KeyError:
     st.error(
         "OPENAI_API_KEY가 설정되지 않았습니다. "
-        "Streamlit Secrets를 확인하세요."
+        "Streamlit Cloud의 Settings → Secrets를 확인하세요."
     )
+    st.stop()
+
+
+try:
+    llm = ContractLLM(
+        api_key=api_key,
+        model=model,
+    )
+
+    rag = ContractAnalysisRAG(
+        api_key=api_key,
+        model=model,
+        top_k=5,
+    )
+
+except Exception as error:
+    st.error(f"AI 모델 초기화 중 오류가 발생했습니다: {error}")
     st.stop()
 
 
@@ -54,76 +63,56 @@ except KeyError:
 # 검토 조건
 # --------------------------------------------------
 
-contract_type = st.selectbox(
-    "계약 유형",
-    [
-        "용역계약",
-        "물품구매계약",
-        "공사계약",
-        "비밀유지계약(NDA)",
-        "해외사업계약",
-        "기타",
-    ],
-)
+col1, col2 = st.columns(2)
 
-review_position = st.selectbox(
-    "검토 관점",
-    [
-        "발주자",
-        "계약상대자",
-        "중립적 관점",
-    ],
-)
+with col1:
+    contract_type = st.selectbox(
+        "계약 유형",
+        [
+            "용역계약",
+            "물품구매계약",
+            "공사계약",
+            "비밀유지계약(NDA)",
+            "해외사업계약",
+            "기타",
+        ],
+    )
+
+with col2:
+    review_position = st.selectbox(
+        "검토 관점",
+        [
+            "발주자",
+            "계약상대자",
+            "중립적 관점",
+        ],
+    )
 
 
 # --------------------------------------------------
-# 테스트용 계약서 입력
-# 나중에는 PDF 추출 결과 또는 RAG 검색 결과를 넣습니다.
+# PDF 업로드 및 텍스트 추출
 # --------------------------------------------------
 
-chunks = [
-    {
-        "text": contract_text,
-        "page": 1,
-    }
-]
-
-rag.add_chunks(chunks)
+st.divider()
+st.subheader("1. 계약서 업로드")
 
 uploaded_file = st.file_uploader(
     "계약서 PDF 업로드",
     type=["pdf"],
 )
 
-question = st.text_input(
-    "계약서 질문",
-    placeholder="예: 계약 해지 조건은 무엇인가요?",
-)
-
-if st.button("질문하기", type="primary"):
-    if not question.strip():
-        st.warning("질문을 입력하세요.")
-
-    elif not rag.chunks:
-        st.warning("계약서를 먼저 업로드하세요.")
-
-    else:
-        with st.spinner("계약서 근거를 검색하고 답변을 생성하고 있습니다..."):
-            answer = rag.answer_with_rag(
-                question=question,
-                review_position=review_position,
-            )
-
-        st.markdown(answer)
-
 contract_text = ""
+chunks = []
 
 if uploaded_file is not None:
     try:
         pages = []
 
         with pdfplumber.open(uploaded_file) as pdf:
-            for page_number, page in enumerate(pdf.pages, start=1):
+            for page_number, page in enumerate(
+                pdf.pages,
+                start=1,
+            ):
                 page_text = page.extract_text() or ""
 
                 if page_text.strip():
@@ -131,20 +120,32 @@ if uploaded_file is not None:
                         f"[페이지 {page_number}]\n{page_text}"
                     )
 
+                    chunks.append(
+                        {
+                            "text": page_text,
+                            "page": page_number,
+                        }
+                    )
+
         contract_text = "\n\n".join(pages)
 
         if contract_text:
+            # PDF를 읽은 다음 RAG에 청크를 등록합니다.
+            rag.add_chunks(chunks)
+
             st.success(
-                f"계약서 {len(pages)}개 페이지의 텍스트를 추출했습니다."
+                f"계약서 {len(chunks)}개 페이지의 "
+                "텍스트를 추출했습니다."
             )
 
             with st.expander("추출된 계약서 내용 확인"):
                 st.text_area(
-                    "추출 결과",
+                    "PDF 텍스트",
                     value=contract_text,
                     height=350,
                     disabled=True,
                 )
+
         else:
             st.warning(
                 "PDF에서 텍스트를 추출하지 못했습니다. "
@@ -152,15 +153,25 @@ if uploaded_file is not None:
             )
 
     except Exception as error:
-        st.error(f"PDF 처리 중 오류가 발생했습니다: {error}")
+        st.error(
+            f"PDF 처리 중 오류가 발생했습니다: {error}"
+        )
+
 
 # --------------------------------------------------
 # 계약서 요약
 # --------------------------------------------------
 
-if st.button("계약서 요약", use_container_width=True):
+st.divider()
+st.subheader("2. 계약서 요약")
+
+if st.button(
+    "계약서 요약",
+    key="summary_button",
+    use_container_width=True,
+):
     if not contract_text.strip():
-        st.warning("계약서 내용을 입력하세요.")
+        st.warning("계약서 PDF를 먼저 업로드하세요.")
 
     else:
         with st.spinner("계약서를 요약하고 있습니다..."):
@@ -176,6 +187,9 @@ if st.button("계약서 요약", use_container_width=True):
 # --------------------------------------------------
 # 위험조항 분석
 # --------------------------------------------------
+
+st.divider()
+st.subheader("3. 위험조항 분석")
 
 analysis_items = st.multiselect(
     "위험 분석 항목",
@@ -198,9 +212,13 @@ analysis_items = st.multiselect(
     ],
 )
 
-if st.button("위험조항 분석", use_container_width=True):
+if st.button(
+    "위험조항 분석",
+    key="risk_button",
+    use_container_width=True,
+):
     if not contract_text.strip():
-        st.warning("계약서 내용을 입력하세요.")
+        st.warning("계약서 PDF를 먼저 업로드하세요.")
 
     elif not analysis_items:
         st.warning("분석할 항목을 선택하세요.")
@@ -218,30 +236,51 @@ if st.button("위험조항 분석", use_container_width=True):
 
 
 # --------------------------------------------------
-# 계약서 질의응답
+# RAG 계약서 질의응답
 # --------------------------------------------------
 
 st.divider()
-st.subheader("계약서 질의응답")
+st.subheader("4. 계약서 질의응답")
 
 question = st.text_input(
-    "질문",
-    placeholder="예: 계약상대자가 계약을 해지할 수 있는 조건은 무엇인가요?",
+    "계약서 질문",
+    placeholder=(
+        "예: 계약상대자가 계약을 해지할 수 있는 "
+        "조건은 무엇인가요?"
+    ),
+    key="contract_question",
 )
 
-if st.button("질문하기", type="primary", use_container_width=True):
+if st.button(
+    "질문하기",
+    key="question_button",
+    type="primary",
+    use_container_width=True,
+):
     if not contract_text.strip():
-        st.warning("계약서 내용을 먼저 입력하세요.")
+        st.warning("계약서 PDF를 먼저 업로드하세요.")
 
     elif not question.strip():
         st.warning("질문을 입력하세요.")
 
     else:
-        with st.spinner("계약서에서 근거를 찾아 답변하고 있습니다..."):
-            answer = llm.answer_question(
+        with st.spinner(
+            "관련 조항을 검색하고 답변을 생성하고 있습니다..."
+        ):
+            answer = rag.answer_with_rag(
                 question=question,
-                context=contract_text,
                 review_position=review_position,
             )
 
         st.markdown(answer)
+
+
+# --------------------------------------------------
+# 안내 문구
+# --------------------------------------------------
+
+st.divider()
+st.caption(
+    "본 서비스의 분석 결과는 계약 검토를 위한 참고 의견이며, "
+    "최종 법률 자문을 대신하지 않습니다."
+)
